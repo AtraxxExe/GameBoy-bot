@@ -1,5 +1,4 @@
 # GameBoy-bot v1.2.2 
-## GameBoy Bot — v1.2.2 Release Notes
 *(Changes relative to v1.0.0)*
 
 ---
