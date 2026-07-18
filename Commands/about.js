@@ -43,7 +43,14 @@ function buildWelcomeAboutEmbed() {
     .setColor(0xD8A7E8)
     .setTitle("Hi there!")
     .setDescription(
-      "I'm GameBoy, your new loyal assistant! Thank you for inviting me to your wonderful server. I'll try my best to help you manage it. Check out /help to see what I can do and join my community server where you can find updates & maintenance breaks info, step by step guides on how to set me up successfully and much more! You can also request new commands and features <3 Welcome!"
+      "I'm **GameBoy**, your new multi-purpose assistant, and I am so excited to join your community! Thank you so much for bringing me along for the ride.\n\n" +
+      "My main goal is to make managing your server as smooth and fun as possible. Whether you need powerful moderation tools, leveling systems, or automated features, I've got your back!\n\n" +
+      "🚀 **Getting Started:**\n" +
+      "• Type `/help` to discover everything I can do.\n" +
+      "• Want to set up features like Autoroles, Welcome messages, or Levels? Dive right into my commands!\n\n" +
+      "💬 **Need a hand or want to share feedback?**\n" +
+      "Hop into our **Support Server** using the link below! You'll find step-by-step setup guides, stay updated on maintenance breaks, and you can even request new features or commands you'd love to see.\n\n" +
+      "Let's build an amazing community together! 🤍"
     )
     .setImage(ABOUT_BANNER_URL)
     .setTimestamp()
