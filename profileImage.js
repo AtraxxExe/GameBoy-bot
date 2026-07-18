@@ -54,8 +54,8 @@ module.exports = {
     ctx.fillText(`LEVEL ${stats.level}`, textStartX, 155);
 
     const currentLevelBase = stats.level === 0 ? 0 : levelManager.getRequiredForLevel(stats.level - 1);
-    const levelProgress = stats.messages - currentLevelBase;
-    const levelNeeded = reqMessages - currentLevelBase;
+    const levelProgress = Math.max(0, stats.messages - currentLevelBase);
+    const levelNeeded = Math.max(1, reqMessages - currentLevelBase);
     const progressPercent = Math.min(Math.max(levelProgress / levelNeeded, 0), 1);
 
     ctx.fillStyle = "#a0a5bc";
