@@ -201,7 +201,13 @@ client.on(Events.GuildMemberAdd, async (member) => {
     }
     invitesCache.set(member.guild.id, new Map(liveInvites.map(inv => [inv.code, inv.uses])));
   } catch (err) {
-    console.error("Failed to accurately cross-examine invite links:", err);
+    if (err?.code === 50013 || err?.status === 403 || err?.message?.includes("Missing Permissions")) {
+      inviteDetails = "Invite attribution unavailable: the bot is missing server invite-management permissions.";
+    } else if (err?.code === "EAI_AGAIN" || err?.cause?.code === "EAI_AGAIN") {
+      inviteDetails = "Invite attribution unavailable: Discord DNS/network lookup failure.";
+    } else {
+      console.error("Failed to accurately cross-examine invite links:", err);
+    }
   }
 
   saveLog("joins_leaves", {
