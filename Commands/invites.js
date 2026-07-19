@@ -1,4 +1,4 @@
-const { EmbedBuilder, MessageFlags } = require("discord.js");
+const { EmbedBuilder, MessageFlags, PermissionsBitField } = require("discord.js");
 const { getLogs } = require("../logManager.js");
 
 module.exports = {
@@ -29,6 +29,14 @@ module.exports = {
   },
 
   async execute(interaction) {
+    const botMember = interaction.guild.members.me || await interaction.guild.members.fetchMe().catch(() => null);
+    if (!botMember || !botMember.permissions.has(PermissionsBitField.Flags.ManageGuild)) {
+      return interaction.reply({ 
+        content: "❌ I need the **Manage Server** (`ManageGuild`) permission enabled to access and track invite metrics.", 
+        flags: [MessageFlags.Ephemeral] 
+      });
+    }
+
     const sub = interaction.options.getSubcommand();
     
     const allLogs = getLogs();
@@ -63,8 +71,8 @@ module.exports = {
         .setTitle("Invite Tracking Profile")
         .setDescription(`User ${targetUser} has successfully brought **${uniqueInvitesCount}** members to the server.`)
         .setColor(0xd6aded)
-        .setFooter({ text: "GameBoy Stats" })
-        .setTimestamp();
+        .setTimestamp()
+        .setFooter({ text: "GameBoy Stats" });
 
       return interaction.reply({ embeds: [embed] });
     }
@@ -77,8 +85,8 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setTitle("Server Invite Leaderboard")
         .setColor(0xd6aded)
-        .setFooter({ text: "GameBoy Stats" })
-        .setTimestamp();
+        .setTimestamp()
+        .setFooter({ text: "GameBoy Stats" });
 
       if (sortedLeaderboard.length === 0) {
         embed.setDescription("No tracked invites have been registered yet.");
