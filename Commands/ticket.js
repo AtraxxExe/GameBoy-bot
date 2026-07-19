@@ -178,24 +178,29 @@ module.exports = {
           return interaction.editReply({ content: "❌ I could not verify my own permissions for ticket creation.", flags: [MessageFlags.Ephemeral] });
         }
 
+        const targetCategory = guild.channels.cache.get(config.categoryId) || await guild.channels.fetch(config.categoryId).catch(() => null);
+        if (!targetCategory || targetCategory.type !== ChannelType.GuildCategory) {
+          return interaction.editReply({ content: "❌ The configured ticket category is invalid or no longer accessible. Please re-run /ticket setup.", flags: [MessageFlags.Ephemeral] });
+        }
+
         const missingBotPerms = [];
+        const categoryPerms = botMember.permissionsIn(targetCategory);
+
         if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
           missingBotPerms.push("Manage Roles");
         }
-        if (!botMember.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
+        if (!botMember.permissions.has(PermissionsBitField.Flags.ManageChannels) || !categoryPerms.has(PermissionsBitField.Flags.ManageChannels)) {
           missingBotPerms.push("Manage Channels");
+        }
+        if (!categoryPerms.has(PermissionsBitField.Flags.ViewChannel)) {
+          missingBotPerms.push("View Channel");
         }
 
         if (missingBotPerms.length > 0) {
           return interaction.editReply({
-            content: `❌ I’m missing the following permissions needed to open tickets: ${missingBotPerms.join(", ")}. Please grant them to me and try again.`,
+            content: `❌ I’m missing the following permissions needed to open tickets in that category: ${missingBotPerms.join(", ")}. Please grant them to me at the server/category level and try again.`,
             flags: [MessageFlags.Ephemeral]
           });
-        }
-
-        const targetCategory = guild.channels.cache.get(config.categoryId) || await guild.channels.fetch(config.categoryId).catch(() => null);
-        if (!targetCategory || targetCategory.type !== ChannelType.GuildCategory) {
-          return interaction.editReply({ content: "❌ The configured ticket category is invalid or no longer accessible. Please re-run /ticket setup.", flags: [MessageFlags.Ephemeral] });
         }
 
         const ticketRole = await guild.roles.create({
@@ -219,7 +224,7 @@ module.exports = {
             ]
           },
           {
-            id: guild.members.me.id,
+            id: botMember.id,
             allow: [
               PermissionsBitField.Flags.ViewChannel,
               PermissionsBitField.Flags.SendMessages,
