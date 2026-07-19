@@ -119,8 +119,13 @@ client.once(Events.ClientReady, async () => {
 
   for (const [guildId, guild] of client.guilds.cache) {
     try {
-      const guildInvites = await guild.invites.fetch();
-      invitesCache.set(guild.id, new Map(guildInvites.map(inv => [inv.code, inv.uses])));
+      const botMember = guild.members.me || await guild.members.fetchMe().catch(() => null);
+      if (botMember && botMember.permissions.has(PermissionsBitField.Flags.ManageGuild)) {
+        const guildInvites = await guild.invites.fetch();
+        invitesCache.set(guild.id, new Map(guildInvites.map(inv => [inv.code, inv.uses])));
+      } else {
+        console.log(`ℹ️ Skipping pre-cache for guild ${guild.id}: Bot missing Manage Server permission.`);
+      }
     } catch (err) {
       console.log(`Couldn't pre-cache invites for guild: ${guild.id}`);
     }
@@ -186,20 +191,25 @@ client.on(Events.GuildMemberAdd, async (member) => {
   let inviteDetails = "Unknown Invite Method";
 
   try {
-    const cachedGuildInvites = invitesCache.get(member.guild.id);
-    const liveInvites = await member.guild.invites.fetch();
+    const botMember = member.guild.members.me || await member.guild.members.fetchMe().catch(() => null);
+    if (botMember && botMember.permissions.has(PermissionsBitField.Flags.ManageGuild)) {
+      const cachedGuildInvites = invitesCache.get(member.guild.id);
+      const liveInvites = await member.guild.invites.fetch();
 
-    if (cachedGuildInvites) {
-      const usedInvite = liveInvites.find(inv => {
-        const previousUses = cachedGuildInvites.get(inv.code) || 0;
-        return inv.uses > previousUses;
-      });
+      if (cachedGuildInvites) {
+        const usedInvite = liveInvites.find(inv => {
+          const previousUses = cachedGuildInvites.get(inv.code) || 0;
+          return inv.uses > previousUses;
+        });
 
-      if (usedInvite) {
-        inviteDetails = `Invited by: **${usedInvite.inviter?.tag || "Unknown"}** (Using code: \`${usedInvite.code}\`)`;
+        if (usedInvite) {
+          inviteDetails = `Invited by: **${usedInvite.inviter?.tag || "Unknown"}** (Using code: \`${usedInvite.code}\`)`;
+        }
       }
+      invitesCache.set(member.guild.id, new Map(liveInvites.map(inv => [inv.code, inv.uses])));
+    } else {
+      inviteDetails = "Invite attribution unavailable: the bot is missing server invite-management permissions.";
     }
-    invitesCache.set(member.guild.id, new Map(liveInvites.map(inv => [inv.code, inv.uses])));
   } catch (err) {
     if (err?.code === 50013 || err?.status === 403 || err?.message?.includes("Missing Permissions")) {
       inviteDetails = "Invite attribution unavailable: the bot is missing server invite-management permissions.";
