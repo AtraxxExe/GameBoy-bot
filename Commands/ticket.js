@@ -186,10 +186,7 @@ module.exports = {
         const missingBotPerms = [];
         const categoryPerms = botMember.permissionsIn(targetCategory);
 
-        if (!botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
-          missingBotPerms.push("Manage Roles");
-        }
-        if (!botMember.permissions.has(PermissionsBitField.Flags.ManageChannels) || !categoryPerms.has(PermissionsBitField.Flags.ManageChannels)) {
+        if (!botMember.permissions.has(PermissionsBitField.Flags.ManageChannels) && !categoryPerms.has(PermissionsBitField.Flags.ManageChannels)) {
           missingBotPerms.push("Manage Channels");
         }
         if (!categoryPerms.has(PermissionsBitField.Flags.ViewChannel)) {
@@ -203,12 +200,24 @@ module.exports = {
           });
         }
 
-        const ticketRole = await guild.roles.create({
-          name: `Ticket [${ticketNum}]`,
-          reason: `Auto-generated identifier asset for ticket request #${ticketNum}`
-        });
+        let ticketRole = null;
+        if (botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
+          try {
+            ticketRole = await guild.roles.create({
+              name: `Ticket [${ticketNum}]`,
+              reason: `Auto-generated identifier asset for ticket request #${ticketNum}`,
+              mentionable: false
+            });
 
-        await interaction.member.roles.add(ticketRole);
+            await interaction.member.roles.add(ticketRole);
+          } catch (err) {
+            console.warn("Ticket role creation/assignment failed, falling back to user-specific channel access:", err);
+            if (ticketRole) {
+              await ticketRole.delete().catch(() => {});
+              ticketRole = null;
+            }
+          }
+        }
 
         const channelPerms = [
           {
@@ -216,23 +225,34 @@ module.exports = {
             deny: [PermissionsBitField.Flags.ViewChannel]
           },
           {
+            id: botMember.id,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages,
+              PermissionsBitField.Flags.ManageChannels
+            ]
+          }
+        ];
+
+        if (ticketRole) {
+          channelPerms.push({
             id: ticketRole.id,
             allow: [
               PermissionsBitField.Flags.ViewChannel,
               PermissionsBitField.Flags.SendMessages,
               PermissionsBitField.Flags.ReadMessageHistory
             ]
-          },
-          {
-            id: botMember.id,
+          });
+        } else {
+          channelPerms.push({
+            id: interaction.user.id,
             allow: [
               PermissionsBitField.Flags.ViewChannel,
               PermissionsBitField.Flags.SendMessages,
-              PermissionsBitField.Flags.ManageChannels,
-              PermissionsBitField.Flags.ManageRoles
+              PermissionsBitField.Flags.ReadMessageHistory
             ]
-          }
-        ];
+          });
+        }
 
         guild.roles.cache.forEach(r => {
           if (r.permissions.has(PermissionsBitField.Flags.ManageMessages) && !r.managed) {
@@ -254,7 +274,7 @@ module.exports = {
           permissionOverwrites: channelPerms
         });
 
-        ticketManager.trackActiveTicket(guild.id, ticketChannel.id, interaction.user.id, ticketRole.id, ticketNum);
+        ticketManager.trackActiveTicket(guild.id, ticketChannel.id, interaction.user.id, ticketRole?.id ?? null, ticketNum);
 
         await ticketChannel.send(`Hi <@${interaction.user.id}>! Please start describing your issue. A moderator will help you soon.`);
 
