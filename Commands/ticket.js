@@ -170,7 +170,6 @@ module.exports = {
 
       const urgency = interaction.options.getString("urgency");
       const problem = interaction.options.getString("problem");
-      const ticketNum = ticketManager.getNextTicketId(guild.id);
 
       try {
         const botMember = await guild.members.fetchMe().catch(() => null);
@@ -199,6 +198,9 @@ module.exports = {
             flags: [MessageFlags.Ephemeral]
           });
         }
+
+        // Only allocate a ticket number when we are past permission checks
+        const ticketNum = ticketManager.getNextTicketId(guild.id);
 
         let ticketRole = null;
         if (botMember.permissions.has(PermissionsBitField.Flags.ManageRoles)) {
