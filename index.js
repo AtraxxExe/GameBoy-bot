@@ -8,6 +8,7 @@ const afkManager = require("./afkManager.js");
 const { updateFreeGamesCache, announceDailyFreeGames } = require("./freeGamesService.js");
 const { getDailyAnnouncementDateUTC, getLastDailyAnnouncementDate } = require("./freeGamesManager.js");
 const giveawayManager = require("./giveawayManager.js");
+const { createDashboardServer } = require("./dashboard.js");
 
 const { 
   Client, 
@@ -96,13 +97,10 @@ for (const file of commandFiles) {
 const invitesCache = new Map();
 
 function getTimeUntilNextUTCHour(hour = 0, minute = 0) {
-  // Calculate milliseconds until next occurrence of specified UTC hour:minute
   const now = new Date();
   
-  // Create a target time in UTC
   let next = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hour, minute, 0, 0));
   
-  // If that time has already passed today, schedule for tomorrow
   if (next <= now) {
     next.setUTCDate(next.getUTCDate() + 1);
   }
@@ -111,14 +109,12 @@ function getTimeUntilNextUTCHour(hour = 0, minute = 0) {
 }
 
 function scheduleAtUTC(callback, hour = 0, minute = 0) {
-  // Schedule a callback to run daily at the specified UTC time
   function scheduleNext() {
     const delay = getTimeUntilNextUTCHour(hour, minute);
     console.log(`[FREE GAMES SCHEDULER] Next announcement in ${Math.floor(delay / 1000 / 60)} minutes`);
     
     setTimeout(() => {
       callback();
-      // Schedule next occurrence
       scheduleNext();
     }, delay);
   }
@@ -130,20 +126,33 @@ client.once(Events.ClientReady, async () => {
   console.log(`✅ GameBoy logged in as ${client.user.tag}`);
 
   try {
+    const { createTerminalBridge } = require("./terminalBridge.js");
+    createTerminalBridge(client);
+  } catch (err) {
+    console.error("❌ Failed to initialize terminal bridge:", err);
+  }
+
+  try {
+    const dashboardServer = createDashboardServer(client);
+    dashboardServer.listen(3000, () => {
+      console.log("🌐 Dashboard available at http://localhost:3000");
+    });
+  } catch (err) {
+    console.error("❌ Failed to initialize dashboard:", err);
+  }
+
+  try {
     require("./events/voiceStateUpdate.js")(client);
   } catch (err) {
     console.error("❌ Failed to initialize voice event handler:", err);
   }
 
   try {
-    // Background hourly polling - just update cache, no announcements
     await updateFreeGamesCache();
     setInterval(() => updateFreeGamesCache().catch(err => recordError("free-games hourly cache", err)), 60 * 60 * 1000);
-    
-    // Schedule daily announcement at 00:00 UTC
+
     scheduleAtUTC(() => announceDailyFreeGames(client).catch(err => recordError("free-games daily announcement", err)), 0, 0);
-    
-    // Catch-up: If bot was offline at 00:00 UTC, announce on startup (but only if not announced today)
+
     const todayDate = getDailyAnnouncementDateUTC();
     const guildConfigs = require("./freeGamesManager.js").getAllGuildConfigs();
     
@@ -173,15 +182,23 @@ client.once(Events.ClientReady, async () => {
 
   for (const [guildId, guild] of client.guilds.cache) {
     try {
+      if (!guild?.available) continue;
+
       const botMember = guild.members.me || await guild.members.fetchMe().catch(() => null);
-      if (botMember && botMember.permissions.has(PermissionsBitField.Flags.ManageGuild)) {
-        const guildInvites = await guild.invites.fetch();
-        invitesCache.set(guild.id, new Map(guildInvites.map(inv => [inv.code, inv.uses])));
-      } else {
-        console.log(`ℹ️ Skipping pre-cache for guild ${guild.id}: Bot missing Manage Server permission.`);
+      if (!botMember?.permissions?.has(PermissionsBitField.Flags.ManageGuild)) {
+        continue;
       }
+
+      const guildInvites = await guild.invites.fetch();
+      invitesCache.set(guild.id, new Map(guildInvites.map(inv => [inv.code, inv.uses])));
     } catch (err) {
-      console.log(`Couldn't pre-cache invites for guild: ${guild.id}`);
+      if (err?.code === 50013 || err?.status === 403 || err?.message?.includes("Missing Permissions")) {
+        continue;
+      }
+      if (err?.code === "EAI_AGAIN" || err?.cause?.code === "EAI_AGAIN") {
+        continue;
+      }
+      console.debug(`[invites] Could not pre-cache invites for ${guildId}: ${err?.message || err}`);
     }
   }
 
@@ -773,19 +790,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const verifiedRole = interaction.guild.roles.cache.find(r => r.name.toLowerCase() === "verified");
     
     if (!verifiedRole) {
-      return interaction.reply({ content: "❌ The 'Verified' role could not be found on this server.", flags: [MessageFlags.Ephemeral] });
+      return interaction.reply({ content: "❌ The 'Verified' role could not be found on this server.", flags: [MessageFlags.Ephemeral] }).catch(() => {});
     }
 
     try {
       if (interaction.member.roles.cache.has(verifiedRole.id)) {
-        return interaction.reply({ content: "You are already verified!", flags: [MessageFlags.Ephemeral] });
+        return interaction.reply({ content: "You are already verified!", flags: [MessageFlags.Ephemeral] }).catch(() => {});
       }
 
       await interaction.member.roles.add(verifiedRole);
-      return interaction.reply({ content: "✅ Success! You have been granted the **Verified** role and now have full access to the server.", flags: [MessageFlags.Ephemeral] });
+      return interaction.reply({ content: "✅ Success! You have been granted the **Verified** role and now have full access to the server.", flags: [MessageFlags.Ephemeral] }).catch(() => {});
     } catch (err) {
       console.error("Verification error:", err);
-      return interaction.reply({ content: "❌ I couldn't assign the role. Please check my role hierarchy permissions!", flags: [MessageFlags.Ephemeral] });
+      return interaction.reply({ content: "❌ I couldn't assign the role. Please check my role hierarchy permissions!", flags: [MessageFlags.Ephemeral] }).catch(() => {});
     }
   }
 
@@ -794,7 +811,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const ticketChannel = interaction.guild.channels.cache.get(targetChannelId);
 
     if (!ticketChannel) {
-      return interaction.reply({ content: "❌ Target runtime tracking channel is missing from system logs.", flags: [MessageFlags.Ephemeral] });
+      return interaction.reply({ content: "❌ Target runtime tracking channel is missing from system logs.", flags: [MessageFlags.Ephemeral] }).catch(() => {});
     }
 
     const currentEmbed = interaction.message.embeds[0];
@@ -802,10 +819,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     const assignedField = currentEmbed.fields.find(f => f.name === "Assigned Moderator");
     if (assignedField) {
-      return interaction.reply({ content: "⚠️ A moderator is already assigned to this case layout.", flags: [MessageFlags.Ephemeral] });
+      return interaction.reply({ content: "⚠️ A moderator is already assigned to this case layout.", flags: [MessageFlags.Ephemeral] }).catch(() => {});
     }
 
-    await interaction.deferUpdate();
+    await interaction.deferUpdate().catch(() => {});
 
     updatedEmbed.addFields({ name: "Assigned Moderator", value: `${interaction.user.tag} (${interaction.user.id})`, inline: false });
     
@@ -813,8 +830,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       ButtonBuilder.from(interaction.message.components[0].components[0]).setDisabled(true).setLabel("Assigned Case Profile")
     );
 
-    await interaction.editReply({ embeds: [updatedEmbed], components: [disabledRow] });
-    await ticketChannel.send(`⚡ **A moderator (${interaction.user}) took your case.** After the case is solved, please type \`!done!\``);
+    await interaction.editReply({ embeds: [updatedEmbed], components: [disabledRow] }).catch(() => {});
+    await ticketChannel.send(`⚡ **A moderator (${interaction.user}) took your case.** After the case is solved, please type \`!done!\``).catch(() => {});
     return;
   }
 
@@ -829,12 +846,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     console.error(`Error executing slash command ${interaction.commandName}:`, error);
 
     try {
-      if (interaction.deferred) {
-        await interaction.editReply({ content: '❌ There was an error while executing this command!', flags: [MessageFlags.Ephemeral] });
-      } else if (interaction.replied) {
-        await interaction.followUp({ content: '❌ There was an error while executing this command!', flags: [MessageFlags.Ephemeral] });
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp({ content: '❌ There was an error while executing this command!', flags: [MessageFlags.Ephemeral] }).catch(() => {});
       } else {
-        await interaction.reply({ content: '❌ There was an error while executing this command!', flags: [MessageFlags.Ephemeral] });
+        await interaction.reply({ content: '❌ There was an error while executing this command!', flags: [MessageFlags.Ephemeral] }).catch(() => {});
       }
     } catch (replyError) {
       console.error(`Failed to send slash command error response for ${interaction.commandName}:`, replyError);
