@@ -430,7 +430,7 @@ async function announceDailyFreeGames(client) {
       // Add games as fields
       dailyOffers.forEach((offer, index) => {
         const platformEmoji = offer.source === "epic" ? "🎮" : "🎁";
-        const priceInfo = offer.fromPrice ? ` (was $${offer.fromPrice})` : "";
+        const priceInfo = offer.fromPrice ? ` (was ${offer.fromPrice})` : "";
         const value = `**${offer.platform}**${priceInfo}\n⏰ Until: ${offer.until}\n🔗 [Claim](${offer.link})`;
         
         embed.addFields({
