@@ -100,6 +100,8 @@ async function handleMessage(message) {
     actorTag: "Automod",
   });
 
+ audit("automod", { action: "Automod violation", actor: { tag: "Automod", id: "automod" }, target: message.author, reason, context: `warning=${result.totalWarnings}; preset=${config.preset || "balanced"}` });
+
   if (["message spam", "mention spam", "invite links"].includes(reason)) {
     await openCase(
       message.guild,
@@ -109,10 +111,10 @@ async function handleMessage(message) {
       reason,
       "automod"
     ).catch(() => null);
+  } else {
+    
+    await notifyAdmin(message.guild, { embeds: [new EmbedBuilder().setColor(0xe67e22).setTitle("Automod action").setDescription(`A message from <@${message.author.id}> was removed.\nReason: **${reason}**\nWarning total: **${result.totalWarnings}**`).setFooter({ text: "Message content intentionally redacted" }).setTimestamp()] });
   }
-
-  audit("automod", { action: "Automod violation", actor: { tag: "Automod", id: "automod" }, target: message.author, reason, context: `warning=${result.totalWarnings}; preset=${config.preset || "balanced"}` });
-  await notifyAdmin(message.guild, { embeds: [new EmbedBuilder().setColor(0xe67e22).setTitle("Automod action").setDescription(`A message from <@${message.author.id}> was removed.\nReason: **${reason}**\nWarning total: **${result.totalWarnings}**`).setFooter({ text: "Message content intentionally redacted" }).setTimestamp()] });
   if (["kick", "ban"].includes(result.penalty.type)) {
     await notifyAdmin(message.guild, { embeds: [new EmbedBuilder().setColor(result.penalty.type === "ban" ? 0x992d22 : 0xe67e22).setTitle(result.penalty.type === "ban" ? "Permanent ban issued" : "Warning-limit kick issued").setDescription(`User: <@${message.author.id}>\nTotal warnings: **${result.totalWarnings}**\nReason: **${reason}**`).setTimestamp()] });
   }
